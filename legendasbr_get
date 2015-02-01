@@ -1,0 +1,58 @@
+#!/bin/bash
+set -e
+
+DIR=$(dirname $0)
+
+if [[ -z "$1" ]]; then
+    echo "You must provide the video filename"
+    exit -1
+fi
+
+if [[ ! -e $1 ]]; then
+    echo "File $1 not found"
+    exit -1
+fi
+
+FILE=$(basename $1)
+
+function getpage()
+{
+nodejs <<HEREDOC
+// npm install request cheerio
+var request = require("request");
+var cheerio = require("/usr/local/lib/node_modules/cheerio");
+
+var url="https://www.legendasbrasil.org/hash-$1-auto";
+request({ uri: url }, function(error, response, body) {
+    var $ = cheerio.load(body);
+    var moviename="$FILE".substring(0, "$FILE".length - 4);
+    var subtitleUrl = null;
+    \$('.tbResults td[title=""]').each(function (e,obj) {
+       if(\$(obj).text().lastIndexOf(moviename,0) !==0) return;
+       var anchor=\$(obj).closest(".divResults").find('a[href*=getsubtitle]')
+       if (anchor == undefined) return;
+       var href = anchor.attr('href');
+       if (subtitleUrl == null && href != null)
+           subtitleUrl=href
+    })
+    if (subtitleUrl == null)
+    	subtitleUrl = \$(\$('a[href*="getsubtitle"]').attr("href"))
+    if (subtitleUrl != undefined)
+        console.log(subtitleUrl);
+});
+HEREDOC
+}
+
+HASH=$( $DIR/legendasbr_hash $1 )
+URL=$(getpage $HASH)
+if [[ -z "$URL" ]]; then
+    echo "Couldn't find subtitle"
+    exit 
+fi
+echo movie: $1 hash: $HASH
+
+curl -s $URL > /tmp/subtitle.zip
+unzip -ql /tmp/subtitle.zip
+unzip -q /tmp/subtitle.zip
+rm /tmp/subtitle.zip
+echo "Subtitle downloaded"
