@@ -13,7 +13,7 @@ if [[ ! -e $1 ]]; then
     exit -1
 fi
 
-FILE=$(basename $1)
+FILE=$(basename "$1")
 
 function getpage()
 {
@@ -27,6 +27,7 @@ request({ uri: url }, function(error, response, body) {
     var $ = cheerio.load(body);
     var moviename="$FILE".substring(0, "$FILE".length - 4);
     var subtitleUrl = null;
+
     \$('.tbResults td[title=""]').each(function (e,obj) {
        if(\$(obj).text().lastIndexOf(moviename,0) !==0) return;
        var anchor=\$(obj).closest(".divResults").find('a[href*=getsubtitle]')
@@ -35,24 +36,44 @@ request({ uri: url }, function(error, response, body) {
        if (subtitleUrl == null && href != null)
            subtitleUrl=href
     })
-    if (subtitleUrl == null)
-    	subtitleUrl = \$(\$('a[href*="getsubtitle"]').attr("href"))
-    if (subtitleUrl != undefined)
+
+    if (subtitleUrl == null) 
+    	subtitleUrl = \$('a[href*=getsubtitle]').attr("href")
+    if (subtitleUrl)
         console.log(subtitleUrl);
+    else {
+		var intermediate=\$("a:contains('Baixar Legenda')").attr("href")
+		var url="https://www.legendasbrasil.org/"+intermediate;
+		console.log(url)
+    }
 });
 HEREDOC
 }
 
-HASH=$( $DIR/legendasbr_hash $1 )
+function getpage_method2()
+{
+	wget -O- "$@" -q | grep --color=none installerWindow.install | cut -d"'" -f2
+}
+
+HASH=$( $DIR/legendasbr_hash "$1" )
 URL=$(getpage $HASH)
+if [[ "$URL" =~ .*.htm$ ]]; then
+	URL=$(getpage_method2 "$URL")
+fi
 if [[ -z "$URL" ]]; then
     echo "Couldn't find subtitle"
     exit 
 fi
-echo movie: $1 hash: $HASH
+echo movie: "$1" hash: $HASH
 
 curl -s $URL > /tmp/subtitle.zip
+SRT_NAME=$( unzip -lqq /tmp/subtitle.zip | sed 's/.*:..[ ]*//' )
 unzip -ql /tmp/subtitle.zip
 unzip -q /tmp/subtitle.zip
-rm /tmp/subtitle.zip
-echo "Subtitle downloaded"
+#rm /tmp/subtitle.zip
+echo "Subtitle $SRT_NAME downloaded."
+FINAL_NAME=$(echo $1|sed 's/\.[^.]*$/./')"srt"
+if [[ ! "$SRT_NAME" = "$FINAL_NAME" ]]; then
+	echo "File name doesn't match movie. Renaming"
+	mv -vf "$SRT_NAME" "$FINAL_NAME"
+fi
